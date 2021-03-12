@@ -16,6 +16,17 @@ def downloadSession(session, url):
     html = session.get(url)
     return html
 
+def process(session, urlList):
+    listOfFile = []
+    fileTitle = ""
+    # iterator to show program progress
+    i = 1
+
+    numOfUrl = len(urlList)
+    print("There are ", numOfUrl, " records in the input file.\n")
+    print("Proceeding......\n")
+    with Pool() as p:
+        p.map(downloadAndSave, session, listOfFile)
 ## Download file from each urlLink and save it in its record's folder
 # @param session
 #        Session contain login cookie for download private files
@@ -23,15 +34,16 @@ def downloadSession(session, url):
 #        A list contain recods' that need to download files
 def downloadAndSave(session, urlList):
     listOfFile = []
+    titleLinkList = []
     fileTitle = ""
     # iterator to show program progress
     i = 1
-    
+
     numOfUrl = len(urlList)
     print("There are ", numOfUrl, " records in the input file.\n")
     print("Proceeding......\n")
-    
-    with concurrent.futures.ThreadPoolExecutor(max_workers = 6) as executor:
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
         future_to_url = {executor.submit(loadUrlSession, session, url): url for url in urlList}
         for future in concurrent.futures.as_completed(future_to_url):
             print("Processing ",i, " / ", numOfUrl, "records.")
@@ -44,23 +56,33 @@ def downloadAndSave(session, urlList):
                 break
             if (html.status_code != 404):
                 soup = BeautifulSoup(html.text, 'html.parser')
-                recordTitle = findRecordTitle(soup)
-                findAndDownload(soup, recordTitle, session)
+                recordOfTitle = findRecordTitle(soup)
+                listOfFile = findDownloadLink(soup)
+                for fileDownloadLink in listOfFile:
+                    titleLinkList.append([recordOfTitle, fileDownloadLink])
+                #desired data form: [[folder path, downloadLink1], [folderpath, downloadLink2]]
                 try:
                     nextPageSoup = findNextPage(soup, session)
                     while nextPageSoup != None:
-                        findAndDownload(soup, recordTitle, session)
+                        listOfFile = findDownloadLink(nextPageSoup)
+                        for fileDownloadLink in listOfFile:
+                            titleLinkList.append([recordOfTitle, fileDownloadLink])
                         nextPageSoup = findNextPage(nextPageSoup, session)
                 except:
                     findNextPageErr()
             else:
                 print("\nCan't open url: 404 page not found. null will be used as filled value")
                 print("url: ", url, "\n")
-                
             print("All pages processed. No more next page.")
             print("Successfully download files from ", i, " / ", numOfUrl, "records.\n")
             urlList.remove(url)
             i = i + 1
+    session.close()
+    gc.collect()
+    with Pool(9) as p:
+        print("Start downloading all files, please wait......")
+        print("As long as network usage is high the scripting is running.")
+        p.map(downloadFile, titleLinkList)
 
 def findRecordTitle(parsedHtml):
     title = "null"
@@ -77,6 +99,14 @@ def findRecordTitle(parsedHtml):
 
     return title
 
+def makeDirective(recordTitle):
+    rootPath = os.getcwd()
+    try:
+        os.mkdir(recordTitle)
+    except:
+        print("Folder already exist or couldn't build a folder")
+    fileSavePath = rootPath + "\\" + recordTitle
+
 def findAndDownload(soup, recordTitle, session):
     rootPath = os.getcwd()
     try:
@@ -86,8 +116,9 @@ def findAndDownload(soup, recordTitle, session):
     fileSavePath = rootPath + "\\" + recordTitle
     os.chdir(fileSavePath)
     listOfFile = findDownloadLink(soup)
+    
     if not (listOfFile == None):
-        with Pool() as p:
+        with Pool(9) as p:
             p.map(downloadFile, listOfFile)
         #downloadFile(session, listOfFile)
     else:
@@ -110,15 +141,31 @@ def findNextPageErr():
 #           login cookie to access private file record
 # @param    fileUrl
 #           url for related files
-def downloadFile(fileUrl):
-    file = requests.get(fileUrl)
-    contentDisposition = file.headers["Content-Disposition"]
-    contentDispositionLength = len(contentDisposition)
-    fileNameIndex = contentDisposition.index("filename")
-    fileName = contentDisposition[fileNameIndex+10 : contentDispositionLength-1]
-    with open(fileName, 'wb') as outFile:
-        outFile.write(file.content)
-            
+def downloadFile(titleLinkList):
+    rootPath = os.getcwd()
+    title = titleLinkList[0]
+    fileSavePath = rootPath + "\\" + title
+    try:
+        os.mkdir(title)
+    except:
+        print("Folder already exist or couldn't build a folder")
+    try:
+        os.chdir(fileSavePath)
+        try:
+            file = requests.get(titleLinkList[1])
+            contentDisposition = file.headers["Content-Disposition"]
+            contentDispositionLength = len(contentDisposition)
+            fileNameIndex = contentDisposition.index("filename")
+            fileName = contentDisposition[fileNameIndex+10 : contentDispositionLength-1]
+            with open(fileName, 'wb') as outFile:
+                outFile.write(file.content)
+            print(fileName, " has been successfully downloaded.")
+        except:
+            print("Encounter error when downloading: ", fileName)
+        os.chdir(rootPath)
+    except:
+        print("Fail to save file for: ", title)
+    
 ## find url that related to file download
 # @param    source
 #           parsed html of master file(or previous page if there is multiple nextpage)
