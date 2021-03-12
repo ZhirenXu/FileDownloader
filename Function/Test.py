@@ -43,7 +43,7 @@ def downloadAndSave(session, urlList):
     print("There are ", numOfUrl, " records in the input file.\n")
     print("Proceeding......\n")
 
-    with concurrent.futures.ThreadPoolExecutor() as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         future_to_url = {executor.submit(loadUrlSession, session, url): url for url in urlList}
         for future in concurrent.futures.as_completed(future_to_url):
             print("Processing ",i, " / ", numOfUrl, "records.")
@@ -79,7 +79,7 @@ def downloadAndSave(session, urlList):
             i = i + 1
     session.close()
     gc.collect()
-    with Pool(9) as p:
+    with Pool() as p:
         print("Start downloading all files, please wait......")
         print("As long as network usage is high the scripting is running.")
         p.map(downloadFile, titleLinkList)
@@ -118,7 +118,7 @@ def findAndDownload(soup, recordTitle, session):
     listOfFile = findDownloadLink(soup)
     
     if not (listOfFile == None):
-        with Pool(9) as p:
+        with Pool() as p:
             p.map(downloadFile, listOfFile)
         #downloadFile(session, listOfFile)
     else:
@@ -149,11 +149,12 @@ def downloadFile(titleLinkList):
         os.mkdir(title)
     except:
         print("Folder already exist or couldn't build a folder")
+        print("Folder Title: ", title)
     try:
         os.chdir(fileSavePath)
         try:
-            file = requests.get(titleLinkList[1])
-            contentDisposition = file.headers["Content-Disposition"]
+            fileRequest = requests.get(titleLinkList[1])
+            contentDisposition = fileRequest.headers["Content-Disposition"]
             contentDispositionLength = len(contentDisposition)
             fileNameIndex = contentDisposition.index("filename")
             fileName = contentDisposition[fileNameIndex+10 : contentDispositionLength-1]
@@ -163,8 +164,11 @@ def downloadFile(titleLinkList):
         except:
             print("Encounter error when downloading: ", fileName)
         os.chdir(rootPath)
+        fileRequest.close()
+        gc.collect()
     except:
         print("Fail to save file for: ", title)
+        print("Try to enter folder: ", fileSavePath)
     
 ## find url that related to file download
 # @param    source
