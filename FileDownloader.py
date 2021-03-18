@@ -1,5 +1,7 @@
 import requests
 import progressbar
+import gc
+import os
 from Function import Login
 from Function import SimpleCSV
 from Function import Greeting
@@ -14,18 +16,12 @@ def main():
     inputCSV = SimpleCSV.getCSVInput()
     internalUrlList = SimpleCSV.readCSV(inputCSV)
     totalGroupNum = Run.splitList(internalUrlList, urlGroup)
+
+    Run.buildDownloadFolder()
     for listOfUrl in urlGroup:
-        #Run.downloadAndSave(loginCredit, listOfUrl)
-        Test.downloadAndSave(loginCredit, listOfUrl)    
+        Run.downloadAndSave(loginCredit, listOfUrl)    
         if totalGroupNum > 1:
-            print("\nOne group of works is scanned. Cleaning memory and reauthorizing now.")
-            logSession.close()
-            gc.collect()
-            logSession = Login.reAuth()
-            print("Done")
-            urlGroup = urlGroup - 1
-            print("Remain group number: ", len(urlGroup))
-            
+            loginCredit = Run.cleanUp(totalGroupNum, loginCredit)
     Greeting.sysExit()
 
 if __name__ == "__main__":

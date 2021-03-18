@@ -1,18 +1,18 @@
-import urllib.request
-import concurrent.futures
 from multiprocessing import Pool
 from bs4 import BeautifulSoup
-import requests
 from requests import Session
+from Function import Login
+import requests
+import urllib.request
+import concurrent.futures
 import sys
 import gc
 import os
+import traceback
+
+downloadSession = requests.session()
 
 def loadUrlSession(session, url):
-    html = session.get(url)
-    return html
-
-def downloadSession(session, url):
     html = session.get(url)
     return html
 
@@ -23,15 +23,16 @@ def downloadSession(session, url):
 #        A list contain recods' that need to download files
 def downloadAndSave(session, urlList):
     listOfFile = []
+    titleLinkList = []
     fileTitle = ""
     # iterator to show program progress
     i = 1
-    
+
     numOfUrl = len(urlList)
     print("There are ", numOfUrl, " records in the input file.\n")
     print("Proceeding......\n")
-    
-    with concurrent.futures.ThreadPoolExecutor(max_workers = 6) as executor:
+        
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         future_to_url = {executor.submit(loadUrlSession, session, url): url for url in urlList}
         for future in concurrent.futures.as_completed(future_to_url):
             print("Processing ",i, " / ", numOfUrl, "records.")
@@ -39,28 +40,45 @@ def downloadAndSave(session, urlList):
             print("Current URL: ", url)
             try:
                 html = future.result()
-            except:
+            except Exception as exc:
+                print(str(exc))
                 httpNoResponse(url)
                 break
             if (html.status_code != 404):
                 soup = BeautifulSoup(html.text, 'html.parser')
-                recordTitle = findRecordTitle(soup)
-                findAndDownload(soup, recordTitle, session)
+                recordOfTitle = findRecordTitle(soup)
+                try:
+                    os.mkdir(recordOfTitle)
+                except Exception as exc:
+                    print(str(exc))
+                    createFolderError(recordOfTitle, url)
+                listOfFile = findDownloadLink(soup)
+                for fileDownloadLink in listOfFile:
+                    titleLinkList.append([recordOfTitle, fileDownloadLink])
+                #desired data form: [[folder name, downloadLink1], [folder name, downloadLink2]]
                 try:
                     nextPageSoup = findNextPage(soup, session)
                     while nextPageSoup != None:
-                        findAndDownload(soup, recordTitle, session)
+                        listOfFile = findDownloadLink(nextPageSoup)
+                        for fileDownloadLink in listOfFile:
+                            titleLinkList.append([recordOfTitle, fileDownloadLink])
                         nextPageSoup = findNextPage(nextPageSoup, session)
-                except:
+                except Exception as exc:
+                    print(str(exc))
                     findNextPageErr()
             else:
                 print("\nCan't open url: 404 page not found. null will be used as filled value")
                 print("url: ", url, "\n")
-                
             print("All pages processed. No more next page.")
             print("Successfully download files from ", i, " / ", numOfUrl, "records.\n")
             urlList.remove(url)
             i = i + 1
+    session.close()
+    gc.collect()
+    with Pool() as p:
+        print("\nStart downloading all files, please wait......")
+        print("As long as network usage is high the scripting is running.\n")
+        p.map(downloadFile, titleLinkList)
 
 def findRecordTitle(parsedHtml):
     title = "null"
@@ -70,30 +88,36 @@ def findRecordTitle(parsedHtml):
         h2 = tag.contents[1]
         #h2 is a list, format as: ['\\n', <h2>The Lantern, Ja...span></small>\n</h2>, '\\n']
         value = h2.contents[0].string
-        endIndex = value.index("\n")
-        title = value[:endIndex]
-    except:
+        title = sanitizeValue(value)        
+    except Exception as exc:
+        print(str(exc))
         print("Fail to get record title!")
+    if title == "null":
+        print("Null title, value = ", value, "\n")
 
     return title
 
-def findAndDownload(soup, recordTitle, session):
-    rootPath = os.getcwd()
-    try:
-        os.mkdir(recordTitle)
-    except:
-        print("Folder already exist or couldn't build a folder")
-    fileSavePath = rootPath + "\\" + recordTitle
-    os.chdir(fileSavePath)
-    listOfFile = findDownloadLink(soup)
-    if not (listOfFile == None):
-        with Pool() as p:
-            p.map(downloadFile, listOfFile)
-        #downloadFile(session, listOfFile)
-    else:
-        print("This record doesn't have any related file!")
-    os.chdir(rootPath)
+def sanitizeValue(recordTitle):
+    title = ""
+    illegalChar = ['\n', '\t', '\\', '/', '|', '"', ':','<', '>', '*', '?', "LPT", "COM", ".."]
     
+    if len(recordTitle) > 255:
+        recordTitle = recordTitle[:255]
+    for char in recordTitle:
+        if not char in illegalChar:
+            title += char
+            
+    return title
+
+def createFolderError(recordOfTitle, url):
+    print("Folder already exist or couldn't build a folder")
+    print("Folder Title: ", recordOfTitle)
+    with open("create folder error log.txt", 'a') as errLog:
+        errLog.write("Folder already exist or couldn't build a folder\n")
+        errLog.write("Folder(record) Title: "+recordOfTitle+"\n")
+        errLog.write("FileLink: "+url+"\n")
+        errLog.write("\n")
+        
 def httpNoResponse(url):
     print("No response from this url!")
     print("url: ", url)
@@ -104,21 +128,61 @@ def findNextPageErr():
     print("Press enter to exit. ", end = '')
     input()
     sys.exit()
-                    
+
+def saveFileError(title, fileSavePath):
+    print("Fail to save file for: ", title)
+    print("Fail to enter folder: ", fileSavePath, "\n")
+    with open("move file error log.txt", 'a') as errLog:
+        errLog.write("Fail to move file into folder: "+fileSavePath+"\n")
+
+def downloadFileError(fileName, title, rootPath):
+    currentPath = os.getcwd()
+    os.chdir(rootPath)
+    print("\nEncounter error when downloading: ", fileName)
+    with open("error log.txt", 'a') as errLog:
+        errLog.write("Encounter error when downloading: "+fileName+"\n")
+        errLog.write("File belongs to record: "+title+"\n")
+        errLog.write("\n")
+    os.chdir(currentPath)
+    
 ## call functions to download each related file
 # @param    session
 #           login cookie to access private file record
 # @param    fileUrl
 #           url for related files
-def downloadFile(fileUrl):
-    file = requests.get(fileUrl)
-    contentDisposition = file.headers["Content-Disposition"]
-    contentDispositionLength = len(contentDisposition)
-    fileNameIndex = contentDisposition.index("filename")
-    fileName = contentDisposition[fileNameIndex+10 : contentDispositionLength-1]
-    with open(fileName, 'wb') as outFile:
-        outFile.write(file.content)
-            
+def downloadFile(titleLinkList):
+    hasChangePath = False
+    rootPath = os.getcwd()
+    title = titleLinkList[0]
+    fileSavePath = rootPath + "\\" + title
+
+    try:
+        os.chdir(fileSavePath)
+        hasChangePath = True
+    except:
+        try:
+            os.mkdir(title)
+            os.chdir(fileSavePath)
+            hasChangePath = True
+        except Exception as exc:
+            print(str(exc))
+            saveFileError(title, fileSavePath)
+    try:
+        fileRequest = downloadSession.get(titleLinkList[1])
+        contentDisposition = fileRequest.headers["Content-Disposition"]
+        contentDispositionLength = len(contentDisposition)
+        fileNameIndex = contentDisposition.index("filename")
+        fileName = contentDisposition[fileNameIndex+10 : contentDispositionLength-1]
+        with open(fileName, 'wb') as outFile:
+            outFile.write(fileRequest.content)
+        print(fileName, " has been successfully downloaded.\n")
+    except Exception as exc:
+        print(str(exc))
+        downloadFileError(fileName, title, rootPath)
+    if hasChangePath:
+        os.chdir(rootPath)
+    
+    
 ## find url that related to file download
 # @param    source
 #           parsed html of master file(or previous page if there is multiple nextpage)
@@ -182,7 +246,7 @@ def splitList(urlList, urlGroup):
         newList.append(url)
         i = i + 1
         j = j + 1
-        if i > 999:
+        if i == 100:
             urlGroup.append(newList)
             i = 0
             newList = []
@@ -192,3 +256,25 @@ def splitList(urlList, urlGroup):
     print("Total group of url: ", totalGroupNum)
 
     return totalGroupNum
+
+def cleanUp(groupNum, loginSession):
+    print("\nOne group of works is scanned. Cleaning memory and reauthorizing now.")
+    try:
+        loginSession.close()
+        gc.collect()
+        newLoginSession = Login.reAuth()
+    except Exception as exc:
+        print("\nError: ", str(exc), "\n")
+        print("Press enter to exit")
+        input()
+    print("Done")
+    downloadSession.close()
+    
+    return newLoginSession
+
+def buildDownloadFolder():
+    try:
+        os.mkdir("Download")
+    except Exception as exc:
+        print("\n Error: ", exc, "\n")
+    os.chdir(os.getcwd() + "\\" + "Download")
