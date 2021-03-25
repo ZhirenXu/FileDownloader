@@ -32,7 +32,7 @@ def downloadAndSave(session, urlList):
     print("There are ", numOfUrl, " records in the input file.\n")
     print("Proceeding......\n")
         
-    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         future_to_url = {executor.submit(loadUrlSession, session, url): url for url in urlList}
         for future in concurrent.futures.as_completed(future_to_url):
             print("Processing ",i, " / ", numOfUrl, "records.")
@@ -53,8 +53,9 @@ def downloadAndSave(session, urlList):
                     print(str(exc))
                     createFolderError(recordOfTitle, url)
                 listOfFile = findDownloadLink(soup)
-                for fileDownloadLink in listOfFile:
-                    titleLinkList.append([recordOfTitle, fileDownloadLink])
+                if len(listOfFile) > 0:
+                    for fileDownloadLink in listOfFile:
+                        titleLinkList.append([recordOfTitle, fileDownloadLink])
                 #desired data form: [[folder name, downloadLink1], [folder name, downloadLink2]]
                 try:
                     nextPageSoup = findNextPage(soup, session)
@@ -75,7 +76,7 @@ def downloadAndSave(session, urlList):
             i = i + 1
     session.close()
     gc.collect()
-    with Pool() as p:
+    with Pool(4) as p:
         print("\nStart downloading all files, please wait......")
         print("As long as network usage is high the scripting is running.\n")
         p.map(downloadFile, titleLinkList)
