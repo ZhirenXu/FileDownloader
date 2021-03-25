@@ -1,5 +1,4 @@
 import requests
-import progressbar
 import gc
 import os
 from Function import Login
