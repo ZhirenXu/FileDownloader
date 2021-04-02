@@ -2,6 +2,7 @@ from multiprocessing import Pool
 from bs4 import BeautifulSoup
 from requests import Session
 from Function import Login
+from requests.auth import HTTPDigestAuth
 import requests
 import urllib.request
 import concurrent.futures
@@ -9,8 +10,6 @@ import sys
 import gc
 import os
 import traceback
-
-downloadSession = requests.session()
 
 def loadUrlSession(session, url):
     html = session.get(url)
@@ -32,7 +31,7 @@ def downloadAndSave(session, urlList):
     print("There are ", numOfUrl, " records in the input file.\n")
     print("Proceeding......\n")
         
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         future_to_url = {executor.submit(loadUrlSession, session, url): url for url in urlList}
         for future in concurrent.futures.as_completed(future_to_url):
             print("Processing ",i, " / ", numOfUrl, "records.")
@@ -53,9 +52,8 @@ def downloadAndSave(session, urlList):
                     print(str(exc))
                     createFolderError(recordOfTitle, url)
                 listOfFile = findDownloadLink(soup)
-                if len(listOfFile) > 0:
-                    for fileDownloadLink in listOfFile:
-                        titleLinkList.append([recordOfTitle, fileDownloadLink])
+                for fileDownloadLink in listOfFile:
+                    titleLinkList.append([recordOfTitle, fileDownloadLink])
                 #desired data form: [[folder name, downloadLink1], [folder name, downloadLink2]]
                 try:
                     nextPageSoup = findNextPage(soup, session)
@@ -71,15 +69,23 @@ def downloadAndSave(session, urlList):
                 print("\nCan't open url: 404 page not found. null will be used as filled value")
                 print("url: ", url, "\n")
             print("All pages processed. No more next page.")
-            print("Successfully download files from ", i, " / ", numOfUrl, "records.\n")
+            print("Successfully find download link from ", i, " / ", numOfUrl, "records.\n")
             urlList.remove(url)
             i = i + 1
-    session.close()
-    gc.collect()
-    with Pool(4) as p:
-        print("\nStart downloading all files, please wait......")
-        print("As long as network usage is high the scripting is running.\n")
-        p.map(downloadFile, titleLinkList)
+    #session.close()
+    #gc.collect()
+    #session = Login.reAuth()
+    #downloadSession.close()
+    #global downloadSession
+    #downloadSession.close()
+    #downloadSession = requests.session()
+    #downloadSession = Login.login()
+    for titleLink in titleLinkList:
+        downloadFile(session, titleLink)
+    #with Pool() as p:
+    #    print("\nStart downloading all files, please wait......")
+    #    print("As long as network usage is high the scripting is running.\n")
+    #    p.map(downloadFile, titleLinkList)
 
 def findRecordTitle(parsedHtml):
     title = "null"
@@ -136,12 +142,12 @@ def saveFileError(title, fileSavePath):
     with open("move file error log.txt", 'a') as errLog:
         errLog.write("Fail to move file into folder: "+fileSavePath+"\n")
 
-def downloadFileError(fileName, title, rootPath):
+def downloadFileError(fileLink, title, rootPath):
     currentPath = os.getcwd()
     os.chdir(rootPath)
-    print("\nEncounter error when downloading: ", fileName)
+    print("\nEncounter error when downloading: ", fileLink)
     with open("error log.txt", 'a') as errLog:
-        errLog.write("Encounter error when downloading: "+fileName+"\n")
+        errLog.write("Encounter error when downloading: "+fileLink+"\n")
         errLog.write("File belongs to record: "+title+"\n")
         errLog.write("\n")
     os.chdir(currentPath)
@@ -151,7 +157,7 @@ def downloadFileError(fileName, title, rootPath):
 #           login cookie to access private file record
 # @param    fileUrl
 #           url for related files
-def downloadFile(titleLinkList):
+def downloadFile(downloadSession, titleLinkList):
     hasChangePath = False
     rootPath = os.getcwd()
     title = titleLinkList[0]
@@ -169,7 +175,10 @@ def downloadFile(titleLinkList):
             print(str(exc))
             saveFileError(title, fileSavePath)
     try:
+        print("DownloadLink: ", titleLinkList[1])
+        # request auth method: auth=HTTPDigestAuth(Login.crediential["Email"], Login.crediential["Password"])
         fileRequest = downloadSession.get(titleLinkList[1])
+        #print(fileRequest.headers)
         contentDisposition = fileRequest.headers["Content-Disposition"]
         contentDispositionLength = len(contentDisposition)
         fileNameIndex = contentDisposition.index("filename")
@@ -179,7 +188,7 @@ def downloadFile(titleLinkList):
         print(fileName, " has been successfully downloaded.\n")
     except Exception as exc:
         print(str(exc))
-        downloadFileError(fileName, title, rootPath)
+        downloadFileError(titleLinkList[1], title, rootPath)
     if hasChangePath:
         os.chdir(rootPath)
     
