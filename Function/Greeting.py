@@ -3,9 +3,9 @@ import sys
 ## print program info
 def showInfo():
     print("*******************************")
-    print("*    File Downloader v1.0.2   *")
+    print("*    File Downloader v1.1.0   *")
     print("*      Author: Zhiren Xu      *")
-    print("*   published data: 03/25/21  *")
+    print("*   published data: 04/06/21  *")
     print("*******************************")
         
 ## print exit message
