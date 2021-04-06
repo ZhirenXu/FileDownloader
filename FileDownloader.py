@@ -1,6 +1,7 @@
 import requests
 import gc
 import os
+import sys
 from Function import Login
 from Function import SimpleCSV
 from Function import Greeting
@@ -12,15 +13,16 @@ def main():
     
     Greeting.showInfo()
     loginCredit = Login.login()
+    cookie = loginCredit.get_cookiejar()
+    #use the cookie for download session, try using requests instead of mechanicalsoup
     inputCSV = SimpleCSV.getCSVInput()
     internalUrlList = SimpleCSV.readCSV(inputCSV)
     totalGroupNum = Run.splitList(internalUrlList, urlGroup)
-
     Run.buildDownloadFolder()
     for listOfUrl in urlGroup:
-        Run.downloadAndSave(loginCredit, listOfUrl)    
-        if totalGroupNum > 1:
-            loginCredit = Run.cleanUp(totalGroupNum, loginCredit)
+        Run.downloadAndSave(cookie, listOfUrl)    
+        #if totalGroupNum > 1:
+         #   loginCredit = Run.cleanUp(totalGroupNum, loginCredit)
     Greeting.sysExit()
 
 if __name__ == "__main__":
