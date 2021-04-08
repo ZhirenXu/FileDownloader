@@ -6,7 +6,6 @@ from Function import Login
 from Function import SimpleCSV
 from Function import Greeting
 from Function import Run
-from Function import Test
 
 def main():
     urlGroup = []
