@@ -220,6 +220,8 @@ def downloadFileError(fileLink, title, rootPath):
 # @param    titleLinkList
 #           list contain download file folder name and url
 #           [url, fileDownloadLink, cookie]
+# @return   titleLinkList
+#           Same list but append file name
 def downloadFile(titleLinkList):
     hasChangePath = False
     rootPath = os.getcwd()
@@ -270,7 +272,6 @@ def findDownloadLink(source):
     else:
         print("File download link not found!")
         print("Please restart the script, usually it will fix the problem.\n")
-        
         return None
 
 ## if items are more than 9, it will continue in next page.
