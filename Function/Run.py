@@ -4,6 +4,7 @@ from Function import Login
 import requests
 import urllib.request
 import concurrent.futures
+import csv
 import sys
 import gc
 import os
@@ -53,24 +54,18 @@ def downloadAndSave(cookie, urlList):
             if (html.status_code != 404):
                 soup = BeautifulSoup(html.text, 'html.parser')
                 recordOfTitle = findRecordTitle(soup)
-                try:
-                    os.mkdir(recordOfTitle)
-                except Exception as exc:
-                    print("\n")
-                    traceback.print_exc()
-                    createFolderError(recordOfTitle, url)
                 listOfFile = findDownloadLink(soup)
                 if len(listOfFile) > 0:
                     for fileDownloadLink in listOfFile:
-                        titleLinkList.append([recordOfTitle, fileDownloadLink])
-                    #desired data form: [[folder name, downloadLink1], [folder name, downloadLink2]]
+                        titleLinkList.append([url, fileDownloadLink])
+                    # data form: [[internal id url, downloadLink1], [internal id url, downloadLink2]]
                     try:
                         nextPageSoup = findNextPage(soup, cookie)
                         while nextPageSoup != None:
                             listOfFile = findDownloadLink(nextPageSoup)
                             if len(listOfFile) > 0:
                                 for fileDownloadLink in listOfFile:
-                                    titleLinkList.append([recordOfTitle, fileDownloadLink])
+                                    titleLinkList.append([url, fileDownloadLink])
                             else:
                                 downloadFileError(url, recordOfTitle, os.getcwd())
                             nextPageSoup = findNextPage(nextPageSoup, cookie)
@@ -88,13 +83,39 @@ def downloadAndSave(cookie, urlList):
             urlList.remove(url)
             i = i + 1
             gc.collect()
-    #desired data form: [[folder name, downloadLink1, cookie], [folder name, downloadLink2, cookie]]
+    #desired data form: [[internal id url, downloadLink1, cookie], [internal id url, downloadLink2, cookie]]
     for titleLink in titleLinkList:
         titleLink.append(cookie)
     with Pool() as p:
         print("\nStart downloading all files, please wait......")
         print("As long as network usage is high the scripting is running.\n")
-        p.map(downloadFile, titleLinkList)
+        titleLinkSummary = (p.map(downloadFile, titleLinkList))
+        print("Download finish. Generate CSV report...\n")
+        buildCSV(titleLinkSummary)
+
+## Build a dict tuple for CSV output. Tuple include internal id of a record and file names belong that record
+# @param    titleLinkList
+#           list contain download file folder name and url
+#           [[internal id url, downloadLink, cookie, fileName], [...]]
+def buildCSV(titleLinkList):
+    row = dict()
+    for record in titleLinkList:
+        internalID = record[0]
+        fileName = record[3]
+        if internalID in row.keys():
+            row[internalID].append(fileName)
+        else:
+            row[internalID] = [fileName]
+    with open("Download Report.csv", 'a', newline='') as output:
+        csvWriter = csv.writer(output)
+        csvWriter.writerow(["internal id", "download file name"])
+        for key in row.keys():
+            data = list()
+            data.append(key)
+            data += row[key]
+            csvWriter.writerow(data)
+            print(key, " Write into CSV success.")
+        
 
 ## Get the name of records in order to build folder
 # @param    parsedHtml
@@ -114,8 +135,6 @@ def findRecordTitle(parsedHtml):
         print("\n")
         traceback.print_exc()
         print("Fail to get record title!")
-    if title == "null":
-        print("Null title, value = ", value, "\n")
 
     return title
 
@@ -200,27 +219,14 @@ def downloadFileError(fileLink, title, rootPath):
 ## call functions to download each related file
 # @param    titleLinkList
 #           list contain download file folder name and url
-#           [recordOfTitle, fileDownloadLink, cookie]
+#           [url, fileDownloadLink, cookie]
 def downloadFile(titleLinkList):
     hasChangePath = False
     rootPath = os.getcwd()
-    title = titleLinkList[0]
-    fileSavePath = rootPath + "\\" + title
-    
+    fileName = "null"
+
     try:
-        os.chdir(fileSavePath)
-        hasChangePath = True
-    except:
-        try:
-            os.mkdir(title)
-            os.chdir(fileSavePath)
-            hasChangePath = True
-        except Exception as exc:
-            print("\n")
-            traceback.print_exc()
-            saveFileError(title, fileSavePath)
-    try:
-        fileRequest = requests.get(titleLinkList[1], cookies = titleLinkList[2], timeout=15)
+        fileRequest = requests.get(titleLinkList[1], cookies = titleLinkList[2], timeout=30)
         contentDisposition = fileRequest.headers["Content-Disposition"]
         contentDispositionLength = len(contentDisposition)
         fileNameIndex = contentDisposition.index("filename")
@@ -229,12 +235,16 @@ def downloadFile(titleLinkList):
             outFile.write(fileRequest.content)
         print(fileName, " has been successfully downloaded.\n")
         gc.collect()
+        # after download finish, data format should be [[internal id url, downloadLink, cookie, fileName], [...]]
     except Exception as exc:
         print("\n")
         traceback.print_exc()
-        downloadFileError(titleLinkList[1], title, rootPath)
-    if hasChangePath:
-        os.chdir(rootPath)
+        downloadFileError(titleLinkList[1], titleLinkList[0], rootPath)
+        fileName = titleLinkList[1]
+    titleLinkList.append(fileName)
+    
+    return titleLinkList
+    
     
 ## find url that related to file download
 # @param    source

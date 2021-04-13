@@ -6,7 +6,6 @@ from Function import Login
 from Function import SimpleCSV
 from Function import Greeting
 from Function import Run
-from Function import Test
 
 def main():
     urlGroup = []
@@ -21,8 +20,6 @@ def main():
     Run.buildDownloadFolder()
     for listOfUrl in urlGroup:
         Run.downloadAndSave(cookie, listOfUrl)    
-        #if totalGroupNum > 1:
-         #   loginCredit = Run.cleanUp(totalGroupNum, loginCredit)
     Greeting.sysExit()
 
 if __name__ == "__main__":
