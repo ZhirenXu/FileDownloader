@@ -16,10 +16,8 @@ def main():
     #use the cookie for download session, try using requests instead of mechanicalsoup
     inputCSV = SimpleCSV.getCSVInput()
     internalUrlList = SimpleCSV.readCSV(inputCSV)
-    totalGroupNum = Run.splitList(internalUrlList, urlGroup)
     Run.buildDownloadFolder()
-    for listOfUrl in urlGroup:
-        Run.downloadAndSave(cookie, listOfUrl)    
+    Run.downloadAndSave(cookie, internalUrlList)    
     Greeting.sysExit()
 
 if __name__ == "__main__":

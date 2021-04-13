@@ -128,3 +128,4 @@ dmypy.json
 *.txt
 *.txt
 backup.txt
+*.zip
